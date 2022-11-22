@@ -1,10 +1,10 @@
 const path = require('path');
-const dotenv = require('dotenv');
-dotenv.config();
+const dotenv = require('dotenv').config();
 const cors = require('cors')
 const mongoose = require('mongoose')
 const express = require('express')
 const app = express()
+const bodyParser = require('body-parser')
 const alunoRoute = require('./route/alunoRoute');
 const grupoRoute = require('./route/grupoRoute');
 
@@ -17,6 +17,8 @@ try{
     console.log(erro);
 }
 
+app.use(bodyParser.json({limit: '5mb'}));
+app.use(bodyParser.urlencoded({limit: '5mb', extended: true}));
 app.use(express.json())
 app.use(cors())
 

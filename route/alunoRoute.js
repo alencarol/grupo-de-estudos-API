@@ -4,29 +4,44 @@ const aluno = require('../model/alunoModel');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs')
 
-//rota POST para acdastrar o aluno
-alunoRoute.post('/aluno/cadastro/nome=:nome/email=:email/senha=:senha', async(req, res) => {
+//função que verifica o token pelo body
+const verificarJWT = (req, res, next) => {
+    const token = req.body.token;
+    if (!token) {
+        res.json({logado: false, mensagem: 'Token não foi enviado.'});
+    }else{
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) {
+            res.json({locado: false, mensagem: 'Falha na autenticação'});
+        }
+        next();
+    });
+    }
+   
+}
+
+
+//rota POST para cadastrar o aluno
+alunoRoute.post('/aluno/cadastro/', async(req, res) => {
     try{
         //recuperando informações do body
-        const nome = req.params.nome
-        const email = req.params.email
-        const senha = req.params.senha
+        const {nome,email,senha,foto} = req.body
         const senhac = await bcrypt.hash(senha, 10)
 
         //verificando campos
-        if(nome == undefined || email == undefined || senha == undefined || nome === "" || email === "" || senha === ""){
-            res.json({mensagem: 'Erro: Há campos sem preenchimento'})
-
+        if(nome === undefined || email === undefined|| senha == undefined|| nome === "" || email === ""|| senha == ""){
+            res.json({mensagem: 'Erro! Alguns campos não foram definidos!'});  
         }else{
 
             if(await aluno.findOne({email})!=null){ //verifica se o email já existe no banco
-                res.json({mensagem: 'Erro: Email já cadastrado em outra conta'})
+                res.json({mensagem: 'Erro! Email já cadastrado!'}); 
             }else{
                 //se o email não existir no banco, o cadastro é feito
                 await aluno.create({
                     nome,
                     email,
-                    senha: senhac
+                    senha: senhac,
+                    foto
                 });
 
                 res.json({mensagem: 'Aluno cadastrado com sucesso :)'})
@@ -39,76 +54,90 @@ alunoRoute.post('/aluno/cadastro/nome=:nome/email=:email/senha=:senha', async(re
     }
 });
 
-//rota GET para perquisas por email para validar login
-alunoRoute.get('/aluno/login/email=:email/senha=:senha', async(req, res) => {
-    try{
-        user = await aluno.findOne({"email": req.params.email})
-        if(user != null){ //verifica se existe 
-            // res.json(resultado)
 
-            if(await bcrypt.compare(req.params.senha, user.senha)){
-                res.json(user);
-                res.json({status: "Sucesso"})
-            }
 
-        }else{
-            res.json({mensagem: 'Aluno não encontrado.'})
+//rota POST para validar o login do aluno
+alunoRoute.post("/aluno/login", async (req, res) => {
+    const {email, senha} = req.body;
+  
+    const user = await aluno.findOne({ email });
+
+    if (!user) { //verifica usuário
+      return res.json({ error: "Usuário não encontrado!" });
+    }
+    if (await bcrypt.compare(senha, user.senha)) { //compara as senhas 
+      const token = jwt.sign({ email: user.email }, process.env.JWT_SECRET, {expiresIn: 864000});
+  
+      if (res.status(201)) {
+        const body = {
+            id: user._id,
+            nome:user.nome, 
+            email: user.email, 
+            foto: user.foto
         }
 
-    }catch(erro){
-        res.json({mensagem: 'Erro na busca :('})
-        console.log(erro)
+        return res.json({ status: "ok", data: token, body: body});
+    
+      } else {
+        return res.json({ error: "error" });
+      }
     }
-});
+    res.json({ status: "error", error: "Senha inválida!" });
+  });
 
-//rota GET para perquisas por id
-alunoRoute.get('/aluno/id=:id', async(req, res) => {
-    try{
-        resultado = await aluno.findOne({"_id": req.params.id})
-        if(resultado != null){ //verifica se existe e então retorna
-            res.json(resultado)
-        }else{
-            res.json({mensagem: 'Aluno não encontrado.'})
-        }
 
-    }catch(erro){
-        res.json({mensagem: 'Erro na busca :('})
-        console.log(erro)
-    }
-});
-
-//rota PUT - inserir nova foto
-alunoRoute.put('/aluno/update/id=:id/foto=:foto', async(req, res) => {
-    try{
+//rota PUT - atualizar ou deletar foto
+alunoRoute.put('/aluno/update-photo/id=:id', verificarJWT, async (req, res) => {
+    try {
         //recupera informações
-        const id = req.params.id
-        const nova_foto = req.params.foto
+        const {foto, token} = req.body
 
         //verifica informações
-        if(id == undefined || id === "" || nova_foto == undefined || nova_foto === ""){
-            res.json({mensagem: "Os campos não foram preenchidos"})
-        }else{
-            await aluno.findOneAndUpdate({"_id": id}, { $set: { foto: nova_foto }}, {new:true})
-            res.json({mensagem: "Foto atualizada com sucesso!"})
+        if (await aluno.findOneAndUpdate({"_id": req.params.id}, req.body, {new:true}))
+            res.json({mensagem: 'Foto atualizada com sucesso!', foto: foto});
+    } catch (error) {
+        res.json({mensagem: 'Erro na atualização!'});
+    }
+});
+
+
+//rota PUT - atualizar senha
+alunoRoute.put('/aluno/update-password/', async (req, res) => {
+    try {
+        //recupera informações
+        const {email, senha} = req.body
+        const senhac = await bcrypt.hash(senha, 10)
+
+        //verifica informações
+        if (await aluno.findOneAndUpdate({"email": email}, {"senha": senhac}, {new:true}))
+            res.json({mensagem: 'Senha atualizada com sucesso!'})
+        else{
+            res.json({mensagem: 'Falha ao atualizar senha! Email não encontrado!'})
         }
-    }catch(erro){
-        res.json({mensagem: "Erro na atualização"})
+    } catch (error) {
+        res.json({mensagem: 'Erro na atualização!'});
     }
 });
 
 
-//rota que retorna todos os alunos (só pra teste)
-alunoRoute.get('/alunos', async(req, res) => {
-    try{
-        const resultado = await aluno.find({}) //SELECT * FROM aluno
-        res.json(resultado);
+/* // rota DELETE - remove o aluno, ou seja a conta
+alunoRoute.delete('/aluno/delete/id=:id', verificarJWT, async (req, res) => {
+    try {
+        const {token} = req.body
 
-    }catch(erro){
-        res.json({mensagem: "Erro na busca :("})
+        if(await aluno.findOne({"_id": req.params.id})!=null){
+            await aluno.deleteOne({"_id": req.params.id});
+            res.json({mensagem: 'Aluno removido com sucesso!'});
+          }else{
+            res.json({mensagem: 'Erro ao remover! Aluno não existe!'});
+          } 
+    } catch (error) {
+        res.json({mensagem: 'Erro na exclusão!'});
     }
 });
 
-//DELETE - Remove um aluno específico pelo id (só pra teste)
+
+// rota DELETE - remove o aluno, ou seja a conta (TESTES)
 alunoRoute.delete('/delete-aluno/id=:id', async (req, res) => {
     try {
         if(await aluno.findOne({"_id": req.params.id})!=null){
@@ -120,6 +149,8 @@ alunoRoute.delete('/delete-aluno/id=:id', async (req, res) => {
     } catch (error) {
         res.json({mensagem: 'Erro na exclusão!'});
     }
-});
+}); */
+
+
 
 module.exports = alunoRoute;

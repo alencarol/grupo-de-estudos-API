@@ -6,8 +6,9 @@ const GrupoDeEstudoModelSchema = Schema({
     meta: String,
     descricao: String,
     data_encontros: String,
-    membros: [[]],
-    material: String
+    material: String,
+    membros: [String]
+    
 });
 
 module.exports = mongoose.model("grupo", GrupoDeEstudoModelSchema);
